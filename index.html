@@ -475,10 +475,10 @@
             <p class="tagline">Simple, secure video calls that work in your browser. No downloads required.</p>
             
             <div class="action-buttons">
-                <button class="btn btn-primary" onclick="createRoom()">
+                <button class="btn btn-primary" id="create-room-btn">
                     <i class="fas fa-plus"></i> New Meeting
                 </button>
-                <button class="btn btn-secondary" onclick="showJoinRoom()">
+                <button class="btn btn-secondary" id="join-room-btn">
                     <i class="fas fa-user-plus"></i> Join Meeting
                 </button>
             </div>
@@ -487,7 +487,7 @@
                 <h3>Join a Meeting</h3>
                 <div class="input-group">
                     <input type="text" id="join-room-id" placeholder="Enter meeting ID">
-                    <button class="btn btn-primary" onclick="joinRoom()">
+                    <button class="btn btn-primary" id="join-room-submit">
                         <i class="fas fa-arrow-right"></i>
                     </button>
                 </div>
@@ -504,20 +504,20 @@
                 <div class="room-info">
                     <i class="fas fa-users"></i>
                     <span id="room-id-display"></span>
-                    <button class="copy-btn" onclick="copyRoomId()">
+                    <button class="copy-btn" id="copy-room-id-btn">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
             </div>
             
             <div class="call-controls">
-                <button class="control-btn mute" onclick="toggleMute()">
+                <button class="control-btn mute" id="mute-btn">
                     <i class="fas fa-microphone"></i>
                 </button>
-                <button class="control-btn video-off" onclick="toggleVideo()">
+                <button class="control-btn video-off" id="video-btn">
                     <i class="fas fa-video"></i>
                 </button>
-                <button class="control-btn end-call" onclick="endCall()">
+                <button class="control-btn end-call" id="end-call-btn">
                     <i class="fas fa-phone"></i>
                 </button>
             </div>
@@ -525,7 +525,7 @@
     </div>
 
     <!-- Theme Toggle Button -->
-    <button class="btn-theme-toggle" onclick="toggleTheme()">
+    <button class="btn-theme-toggle" id="theme-toggle-btn">
         <i class="fas fa-moon"></i>
     </button>
 
@@ -539,13 +539,25 @@
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         };
 
+        // DOM Elements
+        const createRoomBtn = document.getElementById('create-room-btn');
+        const joinRoomBtn = document.getElementById('join-room-btn');
+        const joinRoomSubmit = document.getElementById('join-room-submit');
+        const joinRoomInput = document.getElementById('join-room-input');
+        const joinRoomId = document.getElementById('join-room-id');
+        const muteBtn = document.getElementById('mute-btn');
+        const videoBtn = document.getElementById('video-btn');
+        const endCallBtn = document.getElementById('end-call-btn');
+        const copyRoomIdBtn = document.getElementById('copy-room-id-btn');
+        const themeToggleBtn = document.getElementById('theme-toggle-btn');
+
         // Theme management
         function toggleTheme() {
             document.body.classList.toggle('dark-theme');
             const isDark = document.body.classList.contains('dark-theme');
             localStorage.setItem('darkTheme', isDark);
             
-            const icon = document.querySelector('.btn-theme-toggle i');
+            const icon = themeToggleBtn.querySelector('i');
             icon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
             
             showNotification(isDark ? 'Dark theme enabled' : 'Light theme enabled');
@@ -555,9 +567,26 @@
         document.addEventListener('DOMContentLoaded', () => {
             if (localStorage.getItem('darkTheme') === 'true') {
                 document.body.classList.add('dark-theme');
-                const icon = document.querySelector('.btn-theme-toggle i');
+                const icon = themeToggleBtn.querySelector('i');
                 icon.className = 'fas fa-sun';
             }
+
+            // Event listeners
+            createRoomBtn.addEventListener('click', createRoom);
+            joinRoomBtn.addEventListener('click', showJoinRoom);
+            joinRoomSubmit.addEventListener('click', joinRoom);
+            muteBtn.addEventListener('click', toggleMute);
+            videoBtn.addEventListener('click', toggleVideo);
+            endCallBtn.addEventListener('click', endCall);
+            copyRoomIdBtn.addEventListener('click', copyRoomId);
+            themeToggleBtn.addEventListener('click', toggleTheme);
+
+            // Allow pressing Enter in the join room input
+            joinRoomId.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    joinRoom();
+                }
+            });
         });
 
         // Home screen functions
@@ -571,11 +600,11 @@
         }
 
         function showJoinRoom() {
-            document.getElementById('join-room-input').style.display = 'block';
+            joinRoomInput.style.display = 'block';
         }
 
         function joinRoom() {
-            currentRoomId = document.getElementById('join-room-id').value.trim();
+            currentRoomId = joinRoomId.value.trim();
             const roomIdRegex = /^[0-9a-f]{4}-[0-9a-f]{4}$/;
             if (!roomIdRegex.test(currentRoomId)) {
                 showNotification('Invalid Meeting ID format. Use xxxx-xxxx', 'error');
@@ -654,13 +683,6 @@
                             const answer = await peerConnection.createAnswer();
                             await peerConnection.setLocalDescription(answer);
                             socket.emit('answer', { roomId, answer });
-                        } offer, roomId }) => {
-                    if (!isCreator) {
-                        try {
-                            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                            const answer = await peerConnection.createAnswer();
-                            await peerConnection.setLocalDescription(answer);
-                            socket.emit('answer', { roomId, answer });
                         } catch (error) {
                             console.error('Error handling offer:', error);
                             showNotification('Error establishing connection', 'error');
@@ -713,8 +735,8 @@
             });
             isMuted = !isMuted;
             
-            const muteBtn = document.querySelector('.control-btn.mute');
-            muteBtn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
+            const muteIcon = muteBtn.querySelector('i');
+            muteIcon.className = isMuted ? 'fas fa-microphone-slash' : 'fas fa-microphone';
             muteBtn.style.backgroundColor = isMuted ? 'var(--danger-color)' : 'var(--warning-color)';
             
             showNotification(isMuted ? 'Microphone muted' : 'Microphone unmuted');
@@ -727,8 +749,8 @@
             });
             isVideoOff = !isVideoOff;
             
-            const videoBtn = document.querySelector('.control-btn.video-off');
-            videoBtn.innerHTML = isVideoOff ? '<i class="fas fa-video-slash"></i>' : '<i class="fas fa-video"></i>';
+            const videoIcon = videoBtn.querySelector('i');
+            videoIcon.className = isVideoOff ? 'fas fa-video-slash' : 'fas fa-video';
             videoBtn.style.backgroundColor = isVideoOff ? 'var(--danger-color)' : 'var(--dark-color)';
             
             showNotification(isVideoOff ? 'Video turned off' : 'Video turned on');
