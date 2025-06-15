@@ -530,38 +530,13 @@
     </button>
 
     <script>
-        // Initialize Socket.IO connection with error handling
-        let socket;
-        try {
-            socket = io('https://sedate-helix-blender.glitch.me', {
-                reconnectionAttempts: 5,
-                reconnectionDelay: 1000,
-                timeout: 20000
-            });
-            
-            socket.on('connect', () => {
-                console.log('Connected to signaling server');
-            });
-            
-            socket.on('connect_error', (err) => {
-                console.error('Connection error:', err);
-                showNotification('Connection error. Please refresh the page.', 'error');
-            });
-        } catch (err) {
-            console.error('Socket.IO initialization error:', err);
-            showNotification('Failed to initialize connection', 'error');
-        }
-
+        const socket = io('https://sedate-helix-blender.glitch.me');
         let localStream, peerConnection;
         let isMuted = false;
         let isVideoOff = false;
         let currentRoomId = '';
         const configuration = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
-            ]
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         };
 
         // Theme management
@@ -583,32 +558,16 @@
                 const icon = document.querySelector('.btn-theme-toggle i');
                 icon.className = 'fas fa-sun';
             }
-            
-            // Test media devices
-            testMediaDevices();
         });
-
-        async function testMediaDevices() {
-            try {
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                console.log('Available devices:', devices);
-            } catch (err) {
-                console.error('Media devices error:', err);
-                showNotification('Could not access media devices. Please check permissions.', 'error');
-            }
-        }
 
         // Home screen functions
         function createRoom() {
             currentRoomId = generateRoomId();
             document.getElementById('room-id-display').textContent = currentRoomId;
-            if (socket) {
-                socket.emit('create-room', currentRoomId);
-                startVideoCall(currentRoomId, true);
-                showNotification(`Meeting created! ID: ${currentRoomId}`);
-            } else {
-                showNotification('Connection not established. Please refresh the page.', 'error');
-            }
+            socket.emit('create-room', currentRoomId);
+            startVideoCall(currentRoomId, true);
+            
+            showNotification(`Meeting created! ID: ${currentRoomId}`);
         }
 
         function showJoinRoom() {
@@ -623,12 +582,8 @@
                 return;
             }
             document.getElementById('room-id-display').textContent = currentRoomId;
-            if (socket) {
-                socket.emit('join-room', currentRoomId);
-                startVideoCall(currentRoomId, false);
-            } else {
-                showNotification('Connection not established. Please refresh the page.', 'error');
-            }
+            socket.emit('join-room', currentRoomId);
+            startVideoCall(currentRoomId, false);
         }
 
         // Video call functions
@@ -637,35 +592,19 @@
                 document.getElementById('home-screen').style.display = 'none';
                 document.getElementById('video-call-screen').style.display = 'block';
                 
-                // Get user media with better error handling
-                try {
-                    localStream = await navigator.mediaDevices.getUserMedia({ 
-                        video: {
-                            width: { ideal: 1280 },
-                            height: { ideal: 720 },
-                            facingMode: 'user'
-                        }, 
-                        audio: true 
-                    });
-                } catch (err) {
-                    if (err.name === 'NotAllowedError') {
-                        throw new Error('Please allow camera and microphone access to continue');
-                    } else if (err.name === 'NotFoundError') {
-                        throw new Error('No media devices found');
-                    } else {
-                        throw new Error('Could not access media devices: ' + err.message);
-                    }
-                }
+                // Get user media
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
+                }).catch(error => {
+                    throw new Error(`Failed to get user media: ${error.message}`);
+                });
                 
                 document.getElementById('local-video').srcObject = localStream;
                 document.getElementById('no-user-message').style.display = 'block';
 
-                // Initialize peer connection with better error handling
-                try {
-                    peerConnection = new RTCPeerConnection(configuration);
-                } catch (err) {
-                    throw new Error('Failed to create peer connection: ' + err.message);
-                }
+                // Initialize peer connection
+                peerConnection = new RTCPeerConnection(configuration);
 
                 // Add local stream tracks to connection
                 localStream.getTracks().forEach(track => {
@@ -674,15 +613,18 @@
 
                 // When remote stream is received
                 peerConnection.ontrack = event => {
-                    if (event.streams && event.streams[0]) {
+                    console.log('Received remote stream:', event.streams);
+                    if (event.streams[0]) {
                         document.getElementById('remote-video').srcObject = event.streams[0];
                         document.getElementById('no-user-message').style.display = 'none';
+                    } else {
+                        console.warn('No remote stream received');
                     }
                 };
 
                 // ICE candidate handling
                 peerConnection.onicecandidate = event => {
-                    if (event.candidate && socket) {
+                    if (event.candidate) {
                         socket.emit('ice-candidate', { 
                             roomId: currentRoomId, 
                             candidate: event.candidate 
@@ -690,101 +632,81 @@
                     }
                 };
 
-                peerConnection.oniceconnectionstatechange = () => {
-                    console.log('ICE connection state:', peerConnection.iceConnectionState);
-                    if (peerConnection.iceConnectionState === 'failed') {
-                        showNotification('Connection failed. Trying to reconnect...', 'warning');
-                        peerConnection.restartIce();
-                    }
-                };
-
-                // Setup signaling handlers if socket exists
-                if (socket) {
-                    socket.on('user-joined', async () => {
-                        if (peerConnection && isCreator) {
-                            try {
-                                const offer = await peerConnection.createOffer();
-                                await peerConnection.setLocalDescription(offer);
-                                socket.emit('offer', { roomId: currentRoomId, offer });
-                                showNotification('A participant has joined the meeting!');
-                            } catch (error) {
-                                console.error('Error creating offer:', error);
-                                showNotification('Error connecting to participant', 'error');
-                            }
-                        }
-                    });
-
-                    socket.on('offer', async ({ offer, roomId }) => {
-                        if (!isCreator && peerConnection) {
-                            try {
-                                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                                const answer = await peerConnection.createAnswer();
-                                await peerConnection.setLocalDescription(answer);
-                                socket.emit('answer', { roomId, answer });
-                            } catch (error) {
-                                console.error('Error handling offer:', error);
-                                showNotification('Error establishing connection', 'error');
-                            }
-                        }
-                    });
-
-                    socket.on('answer', async ({ answer }) => {
+                // Handle signaling events
+                socket.on('user-joined', async () => {
+                    if (peerConnection && isCreator) {
                         try {
-                            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                            const offer = await peerConnection.createOffer();
+                            await peerConnection.setLocalDescription(offer);
+                            socket.emit('offer', { roomId: currentRoomId, offer });
+                            showNotification('A participant has joined the meeting!');
                         } catch (error) {
-                            console.error('Error handling answer:', error);
+                            console.error('Error creating offer on user-joined:', error);
+                            showNotification('Error connecting to participant', 'error');
+                        }
+                    }
+                });
+
+                socket.on('offer', async ({ offer, roomId }) => {
+                    if (!isCreator) {
+                        try {
+                            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                            const answer = await peerConnection.createAnswer();
+                            await peerConnection.setLocalDescription(answer);
+                            socket.emit('answer', { roomId, answer });
+                        } offer, roomId }) => {
+                    if (!isCreator) {
+                        try {
+                            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                            const answer = await peerConnection.createAnswer();
+                            await peerConnection.setLocalDescription(answer);
+                            socket.emit('answer', { roomId, answer });
+                        } catch (error) {
+                            console.error('Error handling offer:', error);
                             showNotification('Error establishing connection', 'error');
                         }
-                    });
+                    }
+                });
 
-                    socket.on('ice-candidate', async ({ candidate }) => {
-                        try {
-                            if (candidate && peerConnection) {
-                                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                            }
-                        } catch (error) {
-                            console.error('Error handling ICE candidate:', error);
-                        }
-                    });
+                socket.on('answer', async ({ answer }) => {
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                    } catch (error) {
+                        console.error('Error handling answer:', error);
+                        showNotification('Error establishing connection', 'error');
+                    }
+                });
 
-                    socket.on('user-disconnected', () => {
-                        document.getElementById('no-user-message').style.display = 'block';
-                        document.getElementById('no-user-message').textContent = 'Participant has left the meeting';
-                        document.getElementById('remote-video').srcObject = null;
-                        showNotification('The other participant has left the meeting', 'warning');
-                    });
+                socket.on('ice-candidate', async ({ candidate }) => {
+                    try {
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                    } catch (error) {
+                        console.error('Error handling ICE candidate:', error);
+                    }
+                });
 
-                    socket.on('room-error', (message) => {
-                        showNotification(message, 'error');
-                        endCall();
-                    });
-                }
+                socket.on('user-disconnected', () => {
+                    document.getElementById('no-user-message').style.display = 'block';
+                    document.getElementById('no-user-message').textContent = 'Participant has left the meeting';
+                    document.getElementById('remote-video').srcObject = null;
+                });
 
                 // If creator, create initial offer
-                if (isCreator && peerConnection) {
-                    try {
-                        const offer = await peerConnection.createOffer();
-                        await peerConnection.setLocalDescription(offer);
-                        if (socket) {
-                            socket.emit('offer', { roomId, offer });
-                        }
-                    } catch (error) {
-                        console.error('Error creating initial offer:', error);
-                        showNotification('Error starting the meeting', 'error');
-                        endCall();
-                    }
+                if (isCreator) {
+                    const offer = await peerConnection.createOffer();
+                    await peerConnection.setLocalDescription(offer);
+                    socket.emit('offer', { roomId, offer });
+                    console.log('Offer created and sent for room:', roomId);
                 }
             } catch (error) {
                 console.error('Error starting video call:', error);
-                showNotification(error.message, 'error');
+                showNotification(`Error starting video call: ${error.message}`, 'error');
                 endCall();
             }
         }
 
         // Call control functions
         function toggleMute() {
-            if (!localStream) return;
-            
             const audioTracks = localStream.getAudioTracks();
             audioTracks.forEach(track => {
                 track.enabled = !track.enabled;
@@ -799,8 +721,6 @@
         }
 
         function toggleVideo() {
-            if (!localStream) return;
-            
             const videoTracks = localStream.getVideoTracks();
             videoTracks.forEach(track => {
                 track.enabled = !track.enabled;
@@ -815,38 +735,24 @@
         }
 
         function endCall() {
-            // Clean up peer connection
             if (peerConnection) {
-                peerConnection.onicecandidate = null;
-                peerConnection.ontrack = null;
                 peerConnection.close();
-                peerConnection = null;
             }
-            
-            // Stop local media tracks
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
             }
             
-            // Leave room if connected
-            if (socket && currentRoomId) {
-                socket.emit('leave-room', currentRoomId);
-            }
+            socket.emit('leave-room', currentRoomId);
             
-            // Reset UI
             document.getElementById('home-screen').style.display = 'flex';
             document.getElementById('video-call-screen').style.display = 'none';
             document.getElementById('join-room-input').style.display = 'none';
             document.getElementById('remote-video').srcObject = null;
             document.getElementById('local-video').srcObject = null;
-            document.getElementById('no-user-message').style.display = 'block';
-            document.getElementById('no-user-message').textContent = 'Waiting for participant to join...';
             
             // Reset controls
             isMuted = false;
             isVideoOff = false;
-            currentRoomId = '';
         }
 
         // Utility functions
@@ -855,14 +761,8 @@
         }
 
         function copyRoomId() {
-            if (!currentRoomId) return;
-            
-            navigator.clipboard.writeText(currentRoomId).then(() => {
-                showNotification('Meeting ID copied to clipboard!');
-            }).catch(err => {
-                console.error('Failed to copy:', err);
-                showNotification('Failed to copy Meeting ID', 'error');
-            });
+            navigator.clipboard.writeText(currentRoomId);
+            showNotification('Meeting ID copied to clipboard!');
         }
 
         function showNotification(message, type = 'success') {
@@ -877,23 +777,19 @@
             }, 3000);
         }
 
-        // Handle page visibility changes
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden' && peerConnection) {
-                // Send a ping to keep connection alive
-                if (socket) {
-                    socket.emit('keepalive');
-                }
-            }
+        // Handle room errors
+        socket.on('room-error', (message) => {
+            showNotification(message, 'error');
+            document.getElementById('home-screen').style.display = 'flex';
+            document.getElementById('video-call-screen').style.display = 'none';
         });
 
-        // Handle beforeunload
-        window.addEventListener('beforeunload', (e) => {
-            if (peerConnection) {
-                endCall();
-                // Some browsers require returnValue to be set
-                e.returnValue = 'Are you sure you want to leave? Your call will end.';
-                return e.returnValue;
+        // Handle mobile device orientation changes
+        window.addEventListener('orientationchange', () => {
+            if (window.orientation === 90 || window.orientation === -90) {
+                document.getElementById('local-video').style.width = '15%';
+            } else {
+                document.getElementById('local-video').style.width = '20%';
             }
         });
     </script>
