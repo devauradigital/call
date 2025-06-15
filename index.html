@@ -491,7 +491,7 @@
                         <i class="fas fa-arrow-right"></i>
                     </button>
                 </div>
-                <p style="color: var(--text-color); opacity: 0.7; font-size: 0.9rem;">Example: xxxx-xxxx-xxxx</p>
+                <p style="color: var(--text-color); opacity: 0.7; font-size: 0.9rem;">Example: xxxx-xxxx</p>
             </div>
         </div>
         
@@ -530,7 +530,7 @@
     </button>
 
     <script>
-        const socket = io('https://sedate-helix-blender.glitch.me'); // Replace with your signaling server URL
+        const socket = io('https://sedate-helix-blender.glitch.me');
         let localStream, peerConnection;
         let isMuted = false;
         let isVideoOff = false;
@@ -576,8 +576,9 @@
 
         function joinRoom() {
             currentRoomId = document.getElementById('join-room-id').value.trim();
-            if (!currentRoomId) {
-                showNotification('Please enter a Meeting ID', 'error');
+            const roomIdRegex = /^[0-9a-f]{4}-[0-9a-f]{4}$/;
+            if (!roomIdRegex.test(currentRoomId)) {
+                showNotification('Invalid Meeting ID format. Use xxxx-xxxx', 'error');
                 return;
             }
             document.getElementById('room-id-display').textContent = currentRoomId;
@@ -595,6 +596,8 @@
                 localStream = await navigator.mediaDevices.getUserMedia({ 
                     video: true, 
                     audio: true 
+                }).catch(error => {
+                    throw new Error(`Failed to get user media: ${error.message}`);
                 });
                 
                 document.getElementById('local-video').srcObject = localStream;
@@ -610,8 +613,13 @@
 
                 // When remote stream is received
                 peerConnection.ontrack = event => {
-                    document.getElementById('remote-video').srcObject = event.streams[0];
-                    document.getElementById('no-user-message').style.display = 'none';
+                    console.log('Received remote stream:', event.streams);
+                    if (event.streams[0]) {
+                        document.getElementById('remote-video').srcObject = event.streams[0];
+                        document.getElementById('no-user-message').style.display = 'none';
+                    } else {
+                        console.warn('No remote stream received');
+                    }
                 };
 
                 // ICE candidate handling
@@ -625,21 +633,49 @@
                 };
 
                 // Handle signaling events
-                socket.on('offer', async ({ offer, roomId }) => {
-                    if (!isCreator) {
-                        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                        const answer = await peerConnection.createAnswer();
-                        await peerConnection.setLocalDescription(answer);
-                        socket.emit('answer', { roomId, answer });
+                socket.on('user-joined', async () => {
+                    if (peerConnection && isCreator) {
+                        try {
+                            const offer = await peerConnection.createOffer();
+                            await peerConnection.setLocalDescription(offer);
+                            socket.emit('offer', { roomId: currentRoomId, offer });
+                            showNotification('A participant has joined the meeting!');
+                        } catch (error) {
+                            console.error('Error creating offer on user-joined:', error);
+                            showNotification('Error connecting to participant', 'error');
+                        }
                     }
                 });
 
-                socket.on('answer', ({ answer }) => {
-                    peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                socket.on('offer', async ({ offer, roomId }) => {
+                    if (!isCreator) {
+                        try {
+                            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                            const answer = await peerConnection.createAnswer();
+                            await peerConnection.setLocalDescription(answer);
+                            socket.emit('answer', { roomId, answer });
+                        } catch (error) {
+                            console.error('Error handling offer:', error);
+                            showNotification('Error establishing connection', 'error');
+                        }
+                    }
                 });
 
-                socket.on('ice-candidate', ({ candidate }) => {
-                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                socket.on('answer', async ({ answer }) => {
+                    try {
+                        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                    } catch (error) {
+                        console.error('Error handling answer:', error);
+                        showNotification('Error establishing connection', 'error');
+                    }
+                });
+
+                socket.on('ice-candidate', async ({ candidate }) => {
+                    try {
+                        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                    } catch (error) {
+                        console.error('Error handling ICE candidate:', error);
+                    }
                 });
 
                 socket.on('user-disconnected', () => {
@@ -648,15 +684,16 @@
                     document.getElementById('remote-video').srcObject = null;
                 });
 
-                // If creator, create offer
+                // If creator, create initial offer
                 if (isCreator) {
                     const offer = await peerConnection.createOffer();
                     await peerConnection.setLocalDescription(offer);
                     socket.emit('offer', { roomId, offer });
+                    console.log('Offer created and sent for room:', roomId);
                 }
             } catch (error) {
                 console.error('Error starting video call:', error);
-                showNotification('Error accessing camera/microphone', 'error');
+                showNotification(`Error starting video call: ${error.message}`, 'error');
                 endCall();
             }
         }
