@@ -20,8 +20,6 @@
             --border-radius: 12px;
             --box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
             --transition: all 0.3s ease;
-            
-            /* Light theme defaults */
             --bg-color: #f5f7ff;
             --text-color: #1a1a2e;
             --card-bg: white;
@@ -64,7 +62,6 @@
             flex-direction: column;
         }
 
-        /* Home Screen */
         #home-screen {
             display: flex;
             flex-direction: column;
@@ -186,7 +183,6 @@
             min-width: 50px;
         }
 
-        /* Video Call Screen */
         #video-call-screen {
             display: none;
             height: 100%;
@@ -317,7 +313,6 @@
             color: var(--accent-color);
         }
 
-        /* Theme Toggle */
         .btn-theme-toggle {
             position: fixed;
             bottom: 20px;
@@ -336,7 +331,6 @@
             cursor: pointer;
         }
 
-        /* Animations */
         @keyframes fadeIn {
             from { opacity: 0; }
             to { opacity: 1; }
@@ -353,7 +347,6 @@
             }
         }
 
-        /* Responsive */
         @media (max-width: 768px) {
             .logo {
                 font-size: 2rem;
@@ -429,7 +422,6 @@
             }
         }
 
-        /* Notifications */
         .notification {
             position: fixed;
             bottom: 20px;
@@ -475,10 +467,10 @@
             <p class="tagline">Simple, secure video calls that work in your browser. No downloads required.</p>
             
             <div class="action-buttons">
-                <button class="btn btn-primary" id="create-room-btn">
+                <button class="btn btn-primary" onclick="createRoom()">
                     <i class="fas fa-plus"></i> New Meeting
                 </button>
-                <button class="btn btn-secondary" id="join-room-btn">
+                <button class="btn btn-secondary" onclick="showJoinRoom()">
                     <i class="fas fa-user-plus"></i> Join Meeting
                 </button>
             </div>
@@ -487,11 +479,11 @@
                 <h3>Join a Meeting</h3>
                 <div class="input-group">
                     <input type="text" id="join-room-id" placeholder="Enter meeting ID">
-                    <button class="btn btn-primary" id="join-room-submit">
+                    <button class="btn btn-primary" onclick="joinRoom()">
                         <i class="fas fa-arrow-right"></i>
                     </button>
                 </div>
-                <p style="color: var(--text-color); opacity: 0.7; font-size: 0.9rem;">Example: xxxx-xxxx</p>
+                <p style="color: var(--text-color); opacity: 0.7; font-size: 0.9rem;">Example: xxxx-xxxx-xxxx</p>
             </div>
         </div>
         
@@ -504,20 +496,20 @@
                 <div class="room-info">
                     <i class="fas fa-users"></i>
                     <span id="room-id-display"></span>
-                    <button class="copy-btn" id="copy-room-id-btn">
+                    <button class="copy-btn" onclick="copyRoomId()">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
             </div>
             
             <div class="call-controls">
-                <button class="control-btn mute" id="mute-btn">
+                <button class="control-btn mute" onclick="toggleMute()">
                     <i class="fas fa-microphone"></i>
                 </button>
-                <button class="control-btn video-off" id="video-btn">
+                <button class="control-btn video-off" onclick="toggleVideo()">
                     <i class="fas fa-video"></i>
                 </button>
-                <button class="control-btn end-call" id="end-call-btn">
+                <button class="control-btn end-call" onclick="endCall()">
                     <i class="fas fa-phone"></i>
                 </button>
             </div>
@@ -525,12 +517,13 @@
     </div>
 
     <!-- Theme Toggle Button -->
-    <button class="btn-theme-toggle" id="theme-toggle-btn">
+    <button class="btn-theme-toggle" onclick="toggleTheme()">
         <i class="fas fa-moon"></i>
     </button>
 
     <script>
-        const socket = io('https://sedate-helix-blender.glitch.me');
+        // Client-side logic
+        const socket = io('https://sedate-helix-blender.glitch.me'); // Replace with your signaling server URL
         let localStream, peerConnection;
         let isMuted = false;
         let isVideoOff = false;
@@ -539,119 +532,69 @@
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         };
 
-        // DOM Elements
-        const createRoomBtn = document.getElementById('create-room-btn');
-        const joinRoomBtn = document.getElementById('join-room-btn');
-        const joinRoomSubmit = document.getElementById('join-room-submit');
-        const joinRoomInput = document.getElementById('join-room-input');
-        const joinRoomId = document.getElementById('join-room-id');
-        const muteBtn = document.getElementById('mute-btn');
-        const videoBtn = document.getElementById('video-btn');
-        const endCallBtn = document.getElementById('end-call-btn');
-        const copyRoomIdBtn = document.getElementById('copy-room-id-btn');
-        const themeToggleBtn = document.getElementById('theme-toggle-btn');
-
-        // Theme management
         function toggleTheme() {
             document.body.classList.toggle('dark-theme');
             const isDark = document.body.classList.contains('dark-theme');
             localStorage.setItem('darkTheme', isDark);
-            
-            const icon = themeToggleBtn.querySelector('i');
+            const icon = document.querySelector('.btn-theme-toggle i');
             icon.className = isDark ? 'fas fa-sun' : 'fas fa-moon';
-            
             showNotification(isDark ? 'Dark theme enabled' : 'Light theme enabled');
         }
 
-        // Check for saved theme preference on load
         document.addEventListener('DOMContentLoaded', () => {
             if (localStorage.getItem('darkTheme') === 'true') {
                 document.body.classList.add('dark-theme');
-                const icon = themeToggleBtn.querySelector('i');
+                const icon = document.querySelector('.btn-theme-toggle i');
                 icon.className = 'fas fa-sun';
             }
-
-            // Event listeners
-            createRoomBtn.addEventListener('click', createRoom);
-            joinRoomBtn.addEventListener('click', showJoinRoom);
-            joinRoomSubmit.addEventListener('click', joinRoom);
-            muteBtn.addEventListener('click', toggleMute);
-            videoBtn.addEventListener('click', toggleVideo);
-            endCallBtn.addEventListener('click', endCall);
-            copyRoomIdBtn.addEventListener('click', copyRoomId);
-            themeToggleBtn.addEventListener('click', toggleTheme);
-
-            // Allow pressing Enter in the join room input
-            joinRoomId.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    joinRoom();
-                }
-            });
         });
 
-        // Home screen functions
         function createRoom() {
             currentRoomId = generateRoomId();
             document.getElementById('room-id-display').textContent = currentRoomId;
             socket.emit('create-room', currentRoomId);
             startVideoCall(currentRoomId, true);
-            
             showNotification(`Meeting created! ID: ${currentRoomId}`);
         }
 
         function showJoinRoom() {
-            joinRoomInput.style.display = 'block';
+            document.getElementById('join-room-input').style.display = 'block';
+            document.getElementById('join-room-id').value = '';
         }
 
         function joinRoom() {
-            currentRoomId = joinRoomId.value.trim();
-            const roomIdRegex = /^[0-9a-f]{4}-[0-9a-f]{4}$/;
-            if (!roomIdRegex.test(currentRoomId)) {
-                showNotification('Invalid Meeting ID format. Use xxxx-xxxx', 'error');
+            const roomIdInput = document.getElementById('join-room-id').value.trim();
+            if (!roomIdInput.match(/^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$/)) {
+                showNotification('Invalid Meeting ID format. Use xxxx-xxxx-xxxx', 'error');
                 return;
             }
+            currentRoomId = roomIdInput;
             document.getElementById('room-id-display').textContent = currentRoomId;
             socket.emit('join-room', currentRoomId);
-            startVideoCall(currentRoomId, false);
         }
 
-        // Video call functions
         async function startVideoCall(roomId, isCreator) {
             try {
                 document.getElementById('home-screen').style.display = 'none';
                 document.getElementById('video-call-screen').style.display = 'block';
-                
-                // Get user media
+                document.getElementById('join-room-input').style.display = 'none';
                 localStream = await navigator.mediaDevices.getUserMedia({ 
                     video: true, 
                     audio: true 
-                }).catch(error => {
-                    throw new Error(`Failed to get user media: ${error.message}`);
                 });
-                
                 document.getElementById('local-video').srcObject = localStream;
                 document.getElementById('no-user-message').style.display = 'block';
 
-                // Initialize peer connection
                 peerConnection = new RTCPeerConnection(configuration);
-
-                // Add local stream tracks to connection
                 localStream.getTracks().forEach(track => {
                     peerConnection.addTrack(track, localStream);
                 });
 
-                // When remote stream is received
                 peerConnection.ontrack = event => {
-                    console.log('Received remote stream:', event.streams);
-                    if (event.streams[0]) {
-                        document.getElementById('remote-video').srcObject = event.streams[0];
-                        document.getElementById('no-user-message').style.display = 'none';
-                    } else {
-                        console.warn('No remote stream received');
-                    }
+                    document.getElementById('remote-video').srcObject = event.streams[0];
+                    document.getElementById('no-user-message').style.display = 'none';
                 };
 
-                // ICE candidate handling
                 peerConnection.onicecandidate = event => {
                     if (event.candidate) {
                         socket.emit('ice-candidate', { 
@@ -661,152 +604,143 @@
                     }
                 };
 
-                // Handle signaling events
-                socket.on('user-joined', async () => {
-                    if (peerConnection && isCreator) {
-                        try {
-                            const offer = await peerConnection.createOffer();
-                            await peerConnection.setLocalDescription(offer);
-                            socket.emit('offer', { roomId: currentRoomId, offer });
-                            showNotification('A participant has joined the meeting!');
-                        } catch (error) {
-                            console.error('Error creating offer on user-joined:', error);
-                            showNotification('Error connecting to participant', 'error');
-                        }
-                    }
-                });
-
                 socket.on('offer', async ({ offer, roomId }) => {
-                    if (!isCreator) {
+                    if (roomId === currentRoomId && !isCreator) {
                         try {
                             await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
                             const answer = await peerConnection.createAnswer();
                             await peerConnection.setLocalDescription(answer);
                             socket.emit('answer', { roomId, answer });
+                            showNotification('Successfully joined the meeting!');
                         } catch (error) {
                             console.error('Error handling offer:', error);
-                            showNotification('Error establishing connection', 'error');
+                            showNotification('Failed to join the meeting', 'error');
+                            endCall();
                         }
                     }
                 });
 
-                socket.on('answer', async ({ answer }) => {
-                    try {
+                socket.on('answer', async ({ answer, roomId }) => {
+                    if (roomId === currentRoomId) {
                         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                    } catch (error) {
-                        console.error('Error handling answer:', error);
-                        showNotification('Error establishing connection', 'error');
                     }
                 });
 
-                socket.on('ice-candidate', async ({ candidate }) => {
-                    try {
-                        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                    } catch (error) {
-                        console.error('Error handling ICE candidate:', error);
+                socket.on('ice-candidate', async ({ candidate, roomId }) => {
+                    if (roomId === currentRoomId) {
+                        try {
+                            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                        } catch (error) {
+                            console.error('Error adding ICE candidate:', error);
+                        }
                     }
                 });
 
-                socket.on('user-disconnected', () => {
-                    document.getElementById('no-user-message').style.display = 'block';
-                    document.getElementById('no-user-message').textContent = 'Participant has left the meeting';
-                    document.getElementById('remote-video').srcObject = null;
+                socket.on('user-joined', ({ roomId }) => {
+                    if (roomId === currentRoomId) {
+                        showNotification('A participant has joined the meeting');
+                    }
                 });
 
-                // If creator, create initial offer
+                socket.on('user-disconnected', ({ roomId }) => {
+                    if (roomId === currentRoomId) {
+                        document.getElementById('no-user-message').style.display = 'block';
+                        document.getElementById('no-user-message').textContent = 'Participant has left the meeting';
+                        document.getElementById('remote-video').srcObject = null;
+                    }
+                });
+
+                socket.on('room-error', ({ message, roomId }) => {
+                    if (roomId === currentRoomId) {
+                        showNotification(message, 'error');
+                        endCall();
+                    }
+                });
+
                 if (isCreator) {
                     const offer = await peerConnection.createOffer();
                     await peerConnection.setLocalDescription(offer);
                     socket.emit('offer', { roomId, offer });
-                    console.log('Offer created and sent for room:', roomId);
                 }
             } catch (error) {
                 console.error('Error starting video call:', error);
-                showNotification(`Error starting video call: ${error.message}`, 'error');
+                showNotification('Error accessing camera/microphone or joining meeting', 'error');
                 endCall();
             }
         }
 
-        // Call control functions
         function toggleMute() {
+            if (!localStream) return;
             const audioTracks = localStream.getAudioTracks();
             audioTracks.forEach(track => {
                 track.enabled = !track.enabled;
             });
             isMuted = !isMuted;
-            
-            const muteIcon = muteBtn.querySelector('i');
-            muteIcon.className = isMuted ? 'fas fa-microphone-slash' : 'fas fa-microphone';
+            const muteBtn = document.querySelector('.control-btn.mute');
+            muteBtn.innerHTML = isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
             muteBtn.style.backgroundColor = isMuted ? 'var(--danger-color)' : 'var(--warning-color)';
-            
             showNotification(isMuted ? 'Microphone muted' : 'Microphone unmuted');
         }
 
         function toggleVideo() {
+            if (!localStream) return;
             const videoTracks = localStream.getVideoTracks();
             videoTracks.forEach(track => {
                 track.enabled = !track.enabled;
             });
             isVideoOff = !isVideoOff;
-            
-            const videoIcon = videoBtn.querySelector('i');
-            videoIcon.className = isVideoOff ? 'fas fa-video-slash' : 'fas fa-video';
+            const videoBtn = document.querySelector('.control-btn.video-off');
+            videoBtn.innerHTML = isVideoOff ? '<i class="fas fa-video-slash"></i>' : '<i class="fas fa-video"></i>';
             videoBtn.style.backgroundColor = isVideoOff ? 'var(--danger-color)' : 'var(--dark-color)';
-            
             showNotification(isVideoOff ? 'Video turned off' : 'Video turned on');
         }
 
         function endCall() {
             if (peerConnection) {
                 peerConnection.close();
+                peerConnection = null;
             }
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
             }
-            
             socket.emit('leave-room', currentRoomId);
-            
             document.getElementById('home-screen').style.display = 'flex';
             document.getElementById('video-call-screen').style.display = 'none';
             document.getElementById('join-room-input').style.display = 'none';
             document.getElementById('remote-video').srcObject = null;
             document.getElementById('local-video').srcObject = null;
-            
-            // Reset controls
             isMuted = false;
             isVideoOff = false;
+            currentRoomId = '';
         }
 
-        // Utility functions
         function generateRoomId() {
-            return 'xxxx-xxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16));
+            return `${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
         }
 
         function copyRoomId() {
-            navigator.clipboard.writeText(currentRoomId);
-            showNotification('Meeting ID copied to clipboard!');
+            navigator.clipboard.writeText(currentRoomId).then(() => {
+                showNotification('Meeting ID copied to clipboard!');
+            }).catch(() => {
+                showNotification('Failed to copy Meeting ID', 'error');
+            });
         }
 
         function showNotification(message, type = 'success') {
+            const existingNotifications = document.querySelectorAll('.notification');
+            existingNotifications.forEach(notif => notif.remove());
+            
             const notification = document.createElement('div');
             notification.className = `notification ${type}`;
             notification.textContent = message;
             document.body.appendChild(notification);
-            
             setTimeout(() => {
                 notification.classList.add('fade-out');
                 setTimeout(() => notification.remove(), 300);
             }, 3000);
         }
 
-        // Handle room errors
-        socket.on('room-error', (message) => {
-            showNotification(message, 'error');
-            document.getElementById('home-screen').style.display = 'flex';
-            document.getElementById('video-call-screen').style.display = 'none';
-        });
-
-        // Handle mobile device orientation changes
         window.addEventListener('orientationchange', () => {
             if (window.orientation === 90 || window.orientation === -90) {
                 document.getElementById('local-video').style.width = '15%';
