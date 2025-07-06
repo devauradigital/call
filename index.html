@@ -222,8 +222,9 @@
             bottom: 20px;
             right: 20px;
             width: 20%;
-            max-width: 250px;
             min-width: 120px;
+            min-height: 90px;
+            max-width: 250px;
             border-radius: var(--border-radius);
             border: 3px solid white;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
@@ -370,6 +371,7 @@
             #local-video {
                 width: 30%;
                 min-width: 100px;
+                min-height: 75px;
                 bottom: 70px;
             }
 
@@ -414,6 +416,7 @@
 
             #local-video {
                 min-width: 80px;
+                min-height: 60px;
             }
 
             .no-user {
@@ -483,7 +486,7 @@
                         <i class="fas fa-arrow-right"></i>
                     </button>
                 </div>
-                <p style="color: var(--text-color); opacity: 0.7; font-size: 0.9rem;">Example: xxxx-xxxx-xxxx</p>
+                <p style="color: var(--text-color); opacity: 0.7; font-size: 0.9rem;">Example: 123e4567-e89b-12d3-a456-426614174000</p>
             </div>
         </div>
         
@@ -523,7 +526,7 @@
 
     <script>
         // Client-side logic
-        const socket = io(); // Use relative URL to adapt to deployment environment
+        const socket = io('http://localhost:3000'); // Replace with production URL
         let localStream, peerConnection;
         let isMuted = false;
         let isVideoOff = false;
@@ -533,7 +536,13 @@
         const configuration = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
+                { urls: 'stun:stun1.l.google.com:19302' },
+                // Add TURN server for production
+                // {
+                //     urls: 'turn:your-turn-server.com',
+                //     username: 'username',
+                //     credential: 'password'
+                // }
             ]
         };
 
@@ -550,6 +559,13 @@
             } else {
                 showNotification('Failed to connect to server', 'error');
                 endCall();
+            }
+        });
+
+        socket.on('reconnect', () => {
+            if (currentRoomId) {
+                socket.emit('join-room', currentRoomId);
+                showNotification('Reconnected, rejoining meeting...');
             }
         });
 
@@ -571,11 +587,12 @@
         });
 
         function createRoom() {
-            currentRoomId = generateRoomId();
-            document.getElementById('room-id-display').textContent = currentRoomId;
-            socket.emit('create-room', currentRoomId);
-            startVideoCall(currentRoomId, true);
-            showNotification(`Meeting created! ID: ${currentRoomId}`);
+            socket.emit('create-room', (roomId) => {
+                currentRoomId = roomId;
+                document.getElementById('room-id-display').textContent = currentRoomId;
+                startVideoCall(currentRoomId, true);
+                showNotification(`Meeting created! ID: ${currentRoomId}`);
+            });
         }
 
         function showJoinRoom() {
@@ -585,8 +602,8 @@
 
         function joinRoom() {
             const roomIdInput = document.getElementById('join-room-id').value.trim();
-            if (!roomIdInput.match(/^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$/)) {
-                showNotification('Invalid Meeting ID format. Use xxxx-xxxx-xxxx', 'error');
+            if (!roomIdInput.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)) {
+                showNotification('Invalid Meeting ID format. Use UUID format', 'error');
                 return;
             }
             currentRoomId = roomIdInput;
@@ -607,7 +624,16 @@
                         audio: true 
                     });
                 } catch (error) {
-                    showNotification('Please allow camera and microphone access', 'error');
+                    console.error('Media device error:', error);
+                    let message = 'Please allow camera and microphone access';
+                    if (error.name === 'NotFoundError') {
+                        message = 'No camera or microphone found';
+                    } else if (error.name === 'NotAllowedError') {
+                        message = 'Camera or microphone access denied';
+                    } else if (error.name === 'NotReadableError') {
+                        message = 'Camera or microphone is already in use';
+                    }
+                    showNotification(message, 'error');
                     endCall();
                     return;
                 }
@@ -641,6 +667,15 @@
                         document.getElementById('no-user-message').style.display = 'block';
                         document.getElementById('no-user-message').textContent = 'Participant has disconnected';
                         document.getElementById('remote-video').srcObject = null;
+                    }
+                };
+
+                peerConnection.onicegatheringstatechange = () => {
+                    if (peerConnection.iceGatheringState === 'complete') {
+                        console.log('ICE gathering completed');
+                    } else if (peerConnection.iceGatheringState === 'failed') {
+                        showNotification('Failed to gather ICE candidates', 'error');
+                        endCall();
                     }
                 };
 
@@ -698,6 +733,13 @@
                 socket.on('room-error', ({ message, roomId }) => {
                     if (roomId === currentRoomId) {
                         showNotification(message, 'error');
+                        endCall();
+                    }
+                });
+
+                socket.on('room-deleted', ({ roomId }) => {
+                    if (roomId === currentRoomId) {
+                        showNotification('Meeting room has been closed', 'error');
                         endCall();
                     }
                 });
@@ -766,10 +808,6 @@
             isVideoOff = false;
             currentRoomId = '';
             showNotification('Call ended');
-        }
-
-        function generateRoomId() {
-            return `${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}-${Math.floor(1000 + Math.random() * 9000)}`;
         }
 
         function copyRoomId() {
