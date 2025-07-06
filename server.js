@@ -3,12 +3,21 @@ const app = express();
 const server = require('http').createServer(app);
 const io = require('socket.io')(server, {
     cors: {
-        origin: '*', // Adjust to specific origins in production
-        methods: ['GET', 'POST']
+        origin: 'http://localhost:3000', // Explicitly allow localhost:3000
+        methods: ['GET', 'POST'],
+        credentials: true
     }
 });
 const { v4: uuidv4 } = require('uuid');
 const PORT = process.env.PORT || 3000;
+
+// Serve static files (including index.html)
+app.use(express.static('public'));
+
+// Serve index.html at the root
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/public/index.html');
+});
 
 const rooms = {};
 
